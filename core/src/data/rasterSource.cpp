@@ -38,6 +38,47 @@ public:
         }
     }
 
+    void replace_raster_geometry(const std::shared_ptr<TileData> &tileData) {
+        if (tileData->layers.empty() ||
+            tileData->layers[0].features.empty() ||
+            tileData->layers[0].features[0].geometryType != GeometryType::polygons) {
+                //assert(false); //raster tiles are supposed to only have a single feature with a rectangular polygon
+                LOG("raster tiles are supposed to only have a single feature with a rectangular polygon\n");
+                return;
+        }
+
+        std::vector<Polygon> &rasterPolygons = tileData->layers[0].features[0].polygons;
+
+        if (rasterPolygons.size() == 1)
+        {
+            rasterPolygons.clear();
+            
+            const int steps = 64;
+            const double stepwidth = 1.0 / steps;
+
+            rasterPolygons.reserve(steps*steps);
+            for(int x=0; x < steps; x++) {
+                const double xs = x*stepwidth;
+                const double x1s = (x+1)*stepwidth;
+
+                for(int y=0; y<steps; y++) {
+                    const double ys = y*stepwidth;
+                    const double y1s = (y+1)*stepwidth;
+
+                    Polygon p = {{
+                        {xs, ys},
+                        {x1s, ys},
+                        {x1s, y1s},
+                        {xs, y1s},
+                        {xs, ys}
+                    }};
+
+                    rasterPolygons.emplace_back(std::move(p));
+                }
+            }
+        }
+    }
+
     void process(TileBuilder& _tileBuilder) override {
         auto source = rasterSource();
         if (!source) { return; }
@@ -52,6 +93,9 @@ public:
 
         // Create tile geometries
         if (!subTask) {
+            if (source->isRaster()) {
+                replace_raster_geometry(source->m_tileData);
+            }
             m_tile = _tileBuilder.build(m_tileId, *(source->m_tileData), *source);
             m_ready = true;
         }
